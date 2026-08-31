@@ -1,13 +1,22 @@
 import streamlit as st
 from datetime import date
 
-from utils.styles import inject_css
-from utils.state import init_state, reset_state, SECCIONES, progreso_seccion, progreso_global
+from utils.styles import inject_css, masthead_html, progress_capsule_html
+from utils.state import (
+    init_state, reset_state, SECCIONES, progreso_seccion, progreso_global,
+    APP_AUTHOR, indice_paquete_anio, clasificar_ipa,
+)
 from utils.pdf_export import generar_pdf
+from utils.narrativa import componer_narrativa
 from data.campos import (
-    ENF_INFANCIA, ENF_CRONICAS_ADULTO, ETS, PARENTESCOS_FAMILIARES,
-    ENF_FAMILIARES_FRECUENTES, FRCV_MODIFICABLES, FRCV_NO_MODIFICABLES,
-    REVISION_SISTEMAS, EXAMEN_FISICO_SISTEMAS, DIAGNOSTICOS_SINDROMATICOS_SUGERIDOS,
+    ENF_INFANCIA, ENF_CRONICAS_ADULTO, ETS, CAMPOS_ANTECEDENTES_LIBRES,
+    PARENTESCOS_FAMILIARES, ENF_FAMILIARES_FRECUENTES,
+    FRCV_MODIFICABLES, FRCV_NO_MODIFICABLES,
+    MOTIVOS_CONSULTA, REVISION_SISTEMAS, EXAMEN_FISICO_SISTEMAS,
+    FITZPATRICK_OPCIONES, WEBER_OPCIONES, RINNE_OPCIONES,
+    ABDOMEN_MANIOBRAS, ESTADO_MANIOBRA, REFLEJOS_OSTEOTENDINOSOS,
+    GRADOS_REFLEJO, SIGNOS_MENINGEOS, PARES_CRANEALES_TXT,
+    DIAGNOSTICOS_SINDROMATICOS_SUGERIDOS,
 )
 
 st.set_page_config(
@@ -20,25 +29,32 @@ st.set_page_config(
 inject_css()
 init_state()
 hc = st.session_state["hc"]
+V = st.session_state["form_version"]  # sufijo de todas las keys explícitas — ver nota en utils/state.py
+
+
+def _idx(options, value, default=0):
+    try:
+        return options.index(value)
+    except (ValueError, TypeError):
+        return default
 
 
 # ============================================================
-# SIDEBAR — navegación
+# SIDEBAR
 # ============================================================
 with st.sidebar:
     st.markdown(
         """
-        <div style="text-align:center; padding: 0.4rem 0 1rem 0; border-bottom:1px solid #1e293b;">
-            <div style="font-family:'Lora',serif; font-size:1.4rem; color:#fff; line-height:1.25;">
-                Historia Clínica<br><span style="font-size:1.05rem; color:#2dd4bf; font-style:italic;">Medicina Interna</span>
-            </div>
+        <div class="sidebar-brand">
+            <div class="mark">Historia Clínica</div>
+            <div class="sub">Medicina Interna</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
     pct = progreso_global()
-    st.markdown(f"<div style='font-size:0.7rem; letter-spacing:0.08em; text-transform:uppercase; color:#94a3b8; margin-top:0.9rem;'>Progreso general — {pct}%</div>", unsafe_allow_html=True)
+    st.caption(f"Progreso general — **{pct}%**")
     st.progress(pct / 100)
     st.write("")
 
@@ -48,23 +64,23 @@ with st.sidebar:
         llenos, total = progreso_seccion(key)
         badge = "✓" if llenos == total and total > 0 else (f"{llenos}/{total}" if llenos else "")
         activo = st.session_state["seccion_actual"] == key
-        etiqueta_btn = f"{icono}  {label}   {badge}".rstrip()
+        etiqueta_btn = f"{icono}  {label}" + (f"   {badge}" if badge else "")
         if st.button(etiqueta_btn, key=f"nav_{key}", use_container_width=True,
                      type="primary" if activo else "secondary"):
             st.session_state["seccion_actual"] = key
             st.rerun()
 
-    st.markdown("<div style='border-top:1px solid #1e293b; margin: 0.8rem 0;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='border-top:1px solid var(--line); margin:0.8rem 0;'></div>", unsafe_allow_html=True)
     if st.button("📄  Vista Previa y PDF", key="nav_preview", use_container_width=True,
                  type="primary" if st.session_state["seccion_actual"] == "vista_previa" else "secondary"):
         st.session_state["seccion_actual"] = "vista_previa"
         st.rerun()
 
     st.write("")
-    with st.expander("⚙️ Datos del médico / institución"):
-        hc["medico"]["nombre"] = st.text_input("Nombre del estudiante/médico", value=hc["medico"]["nombre"])
-        hc["medico"]["hospital"] = st.text_input("Institución / Hospital", value=hc["medico"]["hospital"])
-        hc["medico"]["servicio"] = st.text_input("Servicio", value=hc["medico"]["servicio"])
+    with st.expander("⚙️ Médico / institución"):
+        hc["medico"]["nombre"] = st.text_input("Tu nombre", value=hc["medico"]["nombre"], placeholder="Ej. Jade Díaz")
+        hc["medico"]["hospital"] = st.text_input("Institución / Hospital", value=hc["medico"]["hospital"], placeholder="Ej. Hospital Vargas de Caracas")
+        hc["medico"]["servicio"] = st.text_input("Servicio", value=hc["medico"]["servicio"], placeholder="Ej. Medicina Interna")
 
     if st.button("🗑️ Nueva historia (borrar todo)", use_container_width=True):
         st.session_state["confirmar_reset"] = True
@@ -80,23 +96,35 @@ with st.sidebar:
             st.session_state["confirmar_reset"] = False
             st.rerun()
 
-
-def header(kicker, titulo, subtitulo):
     st.markdown(
-        f"""
-        <div class="hc-header">
-            <div class="kicker">{kicker}</div>
-            <h1>{titulo}</h1>
-            <p>{subtitulo}</p>
-        </div>
-        """,
+        f"""<div class="sidebar-footer">Diseñada y desarrollada por<br><b>{APP_AUTHOR}</b></div>""",
         unsafe_allow_html=True,
     )
 
 
-def guia(texto):
-    st.markdown(f"<div class='guide-box'>💡 {texto}</div>", unsafe_allow_html=True)
+# ============================================================
+# Helpers de encabezado
+# ============================================================
+def header(kicker, titulo, subtitulo):
+    st.markdown(
+        f"""<div class="hc-header"><div class="kicker">{kicker}</div><h1>{titulo}</h1><p>{subtitulo}</p></div>""",
+        unsafe_allow_html=True,
+    )
 
+
+def section_title(texto):
+    st.markdown(f"<div class='section-title'>{texto}</div>", unsafe_allow_html=True)
+
+
+def guia_popover(texto, label="¿Qué preguntar / explorar aquí?"):
+    if not texto:
+        return
+    with st.popover(label, icon="💡"):
+        st.write(texto)
+
+
+st.markdown(masthead_html(APP_AUTHOR), unsafe_allow_html=True)
+st.markdown(progress_capsule_html(progreso_global()), unsafe_allow_html=True)
 
 seccion = st.session_state["seccion_actual"]
 
@@ -104,128 +132,194 @@ seccion = st.session_state["seccion_actual"]
 # 1. DATOS DE FILIACIÓN
 # ============================================================
 if seccion == "filiacion":
-    header("Sección 1", "Datos de Filiación", "Identificación del paciente y contacto de emergencia.")
+    header("Sección 1 de 9", "Datos de Filiación", "Identificación del paciente y contacto de emergencia.")
     fil = hc["filiacion"]
 
     c1, c2, c3 = st.columns(3)
-    fil["nombres"] = c1.text_input("Nombres", value=fil["nombres"])
-    fil["apellidos"] = c2.text_input("Apellidos", value=fil["apellidos"])
-    fil["ci"] = c3.text_input("Cédula de Identidad", value=fil["ci"])
+    fil["nombres"] = c1.text_input("Nombres", value=fil["nombres"], placeholder="Ej. María José")
+    fil["apellidos"] = c2.text_input("Apellidos", value=fil["apellidos"], placeholder="Ej. Rodríguez Pérez")
+    fil["ci"] = c3.text_input("Cédula de Identidad", value=fil["ci"], placeholder="Ej. 28.469.571")
 
     c1, c2, c3 = st.columns(3)
-    fil["edad"] = c1.text_input("Edad", value=fil["edad"])
+    fil["edad"] = c1.text_input("Edad", value=fil["edad"], placeholder="Ej. 45 años")
     fil["fecha_nacimiento"] = c2.date_input("Fecha de nacimiento", value=fil["fecha_nacimiento"],
                                              min_value=date(1900, 1, 1), max_value=date.today())
-    fil["sexo"] = c3.selectbox("Sexo", ["", "Masculino", "Femenino"],
-                                index=["", "Masculino", "Femenino"].index(fil["sexo"]) if fil["sexo"] in ["", "Masculino", "Femenino"] else 0)
+    opciones_sexo = ["", "Masculino", "Femenino"]
+    fil["sexo"] = c3.selectbox("Sexo", opciones_sexo, index=_idx(opciones_sexo, fil["sexo"]))
 
     c1, c2, c3 = st.columns(3)
-    fil["estado_civil"] = c1.selectbox("Estado civil", ["", "Soltero(a)", "Casado(a)", "Divorciado(a)", "Viudo(a)", "Unión estable"],
-                                        index=0 if fil["estado_civil"] == "" else ["", "Soltero(a)", "Casado(a)", "Divorciado(a)", "Viudo(a)", "Unión estable"].index(fil["estado_civil"]))
-    fil["religion"] = c2.text_input("Religión", value=fil["religion"])
-    fil["raza"] = c3.text_input("Raza / autoidentificación étnica", value=fil["raza"])
+    opciones_ec = ["", "Soltero(a)", "Casado(a)", "Divorciado(a)", "Viudo(a)", "Unión estable"]
+    fil["estado_civil"] = c1.selectbox("Estado civil", opciones_ec, index=_idx(opciones_ec, fil["estado_civil"]))
+    fil["religion"] = c2.text_input("Religión", value=fil["religion"], placeholder="Ej. Católica")
+    fil["raza"] = c3.text_input("Raza / autoidentificación étnica", value=fil["raza"], placeholder="Ej. Mestiza")
 
     c1, c2, c3 = st.columns(3)
-    fil["dominancia"] = c1.selectbox("Dominancia", ["", "Diestro(a)", "Zurdo(a)", "Ambidiestro(a)"],
-                                      index=0 if fil["dominancia"] == "" else ["", "Diestro(a)", "Zurdo(a)", "Ambidiestro(a)"].index(fil["dominancia"]))
-    fil["lugar_nacimiento"] = c2.text_input("Lugar de nacimiento", value=fil["lugar_nacimiento"])
-    fil["lugar_procedencia"] = c3.text_input("Lugar de procedencia", value=fil["lugar_procedencia"])
+    opciones_dom = ["", "Diestro(a)", "Zurdo(a)", "Ambidiestro(a)"]
+    fil["dominancia"] = c1.selectbox("Dominancia", opciones_dom, index=_idx(opciones_dom, fil["dominancia"]))
+    fil["lugar_nacimiento"] = c2.text_input("Lugar de nacimiento", value=fil["lugar_nacimiento"], placeholder="Ej. Caracas, Distrito Capital")
+    fil["lugar_procedencia"] = c3.text_input("Lugar de procedencia", value=fil["lugar_procedencia"], placeholder="Ej. Caracas, Distrito Capital")
 
     c1, c2, c3 = st.columns(3)
-    fil["ocupacion"] = c1.text_input("Ocupación", value=fil["ocupacion"])
-    fil["telefono"] = c2.text_input("Teléfono", value=fil["telefono"])
-    fil["sala_cama"] = c3.text_input("Sala / Cama", value=fil["sala_cama"])
+    fil["ocupacion"] = c1.text_input("Ocupación", value=fil["ocupacion"], placeholder="Ej. Estudiante de Medicina")
+    fil["telefono"] = c2.text_input("Teléfono", value=fil["telefono"], placeholder="Ej. 0414-1234567")
+    fil["sala_cama"] = c3.text_input("Sala / Cama", value=fil["sala_cama"], placeholder="Ej. 14 / 21")
 
     fil["fecha_ingreso"] = st.date_input("Fecha de ingreso", value=fil["fecha_ingreso"],
                                           min_value=date(1900, 1, 1), max_value=date.today())
 
-    st.markdown("<div class='section-title' style='font-size:1.05rem;'>Contacto de emergencia</div>", unsafe_allow_html=True)
+    section_title("Contacto de emergencia")
     c1, c2 = st.columns(2)
-    fil["contacto_nombre"] = c1.text_input("Nombre completo", value=fil["contacto_nombre"])
-    fil["contacto_telefono"] = c2.text_input("Teléfono", value=fil["contacto_telefono"], key="contacto_tel")
+    fil["contacto_nombre"] = c1.text_input("Nombre completo", value=fil["contacto_nombre"], placeholder="Ej. Liliana Sojo")
+    fil["contacto_telefono"] = c2.text_input("Teléfono", value=fil["contacto_telefono"], placeholder="Ej. 0426-6139428")
     c1, c2 = st.columns(2)
-    fil["contacto_parentesco"] = c1.text_input("Parentesco", value=fil["contacto_parentesco"])
-    fil["contacto_direccion"] = c2.text_input("Dirección", value=fil["contacto_direccion"])
+    fil["contacto_parentesco"] = c1.text_input("Parentesco", value=fil["contacto_parentesco"], placeholder="Ej. Madre")
+    fil["contacto_direccion"] = c2.text_input("Dirección", value=fil["contacto_direccion"], placeholder="Ej. Distrito Capital")
 
 # ============================================================
-# 2. MOTIVO Y ENFERMEDAD ACTUAL
+# 2. MOTIVO Y ENFERMEDAD ACTUAL — asistente dinámico
 # ============================================================
 elif seccion == "consulta":
-    header("Sección 2", "Motivo de Consulta y Enfermedad Actual", "El relato debe ser conciso, cronológico y completo.")
+    header("Sección 2 de 9", "Motivo de Consulta y Enfermedad Actual",
+           "Elige los síntomas guía y te muestro exactamente qué interrogar de cada uno.")
     con = hc["consulta"]
-    guia("Registra el motivo tal cual lo expresa el paciente, entre comillas. Para la enfermedad actual: inicio, características del síntoma principal, evolución, síntomas asociados, y qué lo llevó a consultar.")
-    con["motivo"] = st.text_input('Motivo de consulta (entre comillas, en palabras del paciente)', value=con["motivo"])
-    con["enfermedad_actual"] = st.text_area("Enfermedad actual", value=con["enfermedad_actual"], height=280,
-                                             placeholder="Paciente masculino/femenino de X años, natural y procedente de..., conocido/no conocido por..., que refiere inicio de enfermedad actual...")
+    con["motivo"] = st.text_input('Motivo de consulta (entre comillas, en palabras del paciente)',
+                                   value=con["motivo"], placeholder='Ej. "Dolor abdominal y vómitos"')
+
+    section_title("Asistente de síntomas guiados")
+    label_to_motivo = {f"{m['icono']} {m['label']}": m for m in MOTIVOS_CONSULTA}
+    labels = list(label_to_motivo.keys())
+    key_to_label = {m["key"]: lbl for lbl, m in label_to_motivo.items()}
+    default_labels = [key_to_label[k] for k in con["motivos_sel"] if k in key_to_label]
+
+    seleccion = st.pills("¿Qué síntomas principales presenta?", labels, selection_mode="multi",
+                          default=default_labels, key=f"motivos_pills_{V}")
+    con["motivos_sel"] = [label_to_motivo[l]["key"] for l in seleccion]
+
+    for m in MOTIVOS_CONSULTA:
+        if m["key"] not in con["motivos_sel"]:
+            continue
+        datos = con["motivos_datos"].setdefault(m["key"], {})
+        with st.expander(f"{m['icono']}  {m['label']} — caracterización semiológica", expanded=True):
+            st.caption(m["mnemonico"])
+            cols = st.columns(2)
+            for i, campo in enumerate(m["campos"]):
+                col = cols[i % 2]
+                wkey = f"mc_{m['key']}_{campo['key']}_{V}"
+                if campo["tipo"] == "text":
+                    datos[campo["key"]] = col.text_input(
+                        campo["label"], value=datos.get(campo["key"], ""),
+                        placeholder=campo.get("placeholder", ""), help=campo.get("help") or None, key=wkey,
+                    )
+                elif campo["tipo"] == "select":
+                    opciones = [""] + campo["opciones"]
+                    actual = datos.get(campo["key"], "")
+                    datos[campo["key"]] = col.selectbox(
+                        campo["label"], opciones, index=_idx(opciones, actual),
+                        format_func=lambda x: "—" if x == "" else x,
+                        help=campo.get("help") or None, key=wkey,
+                    )
+                elif campo["tipo"] == "slider":
+                    datos[campo["key"]] = col.slider(
+                        campo["label"], 0, 10, value=int(datos.get(campo["key"]) or 0),
+                        help=campo.get("help") or None, key=wkey,
+                    )
+
+            narrativa = componer_narrativa(m["key"], m["label"], m["campos"], datos)
+            if narrativa:
+                with st.container(border=True):
+                    st.caption("Vista previa de la redacción")
+                    st.write(narrativa)
+                if st.button("➕ Añadir al relato", key=f"add_{m['key']}_{V}"):
+                    actual = con["enfermedad_actual"].strip()
+                    con["enfermedad_actual"] = (actual + " " + narrativa).strip() if actual else narrativa
+                    st.toast(f"Se añadió la caracterización de {m['label'].lower()} al relato", icon="✅")
+                    st.rerun()
+            else:
+                st.caption("Completa al menos un campo para ver la redacción sugerida aquí.")
+
+    section_title("Enfermedad Actual")
+    con["enfermedad_actual"] = st.text_area(
+        "Relato completo", value=con["enfermedad_actual"], height=260,
+        help="Inicio, características del síntoma principal, evolución, síntomas asociados y qué lo trae a consulta.",
+        placeholder='Paciente masculino/femenino de X años, natural y procedente de..., que refiere inicio de enfermedad actual el día...',
+        label_visibility="collapsed",
+    )
 
 # ============================================================
 # 3. ANTECEDENTES PERSONALES
 # ============================================================
 elif seccion == "antecedentes":
-    header("Sección 3", "Antecedentes Personales", "Recorre cada bloque; marca lo positivo y detalla en el campo de texto.")
+    header("Sección 3 de 9", "Antecedentes Personales", "Recorre cada bloque; lo seleccionado se redacta solo.")
     ant = hc["antecedentes"]
+    L = CAMPOS_ANTECEDENTES_LIBRES
 
-    st.markdown("<div class='section-title' style='font-size:1.05rem;'>Médicos — Infancia</div>", unsafe_allow_html=True)
-    ant["enf_infancia_sel"] = st.multiselect("Enfermedades de la infancia", ENF_INFANCIA, default=ant["enf_infancia_sel"])
-    ant["enf_infancia_otros"] = st.text_input("Otros detalles (infancia)", value=ant["enf_infancia_otros"])
+    section_title("Médicos — Infancia")
+    ant["enf_infancia_sel"] = st.pills("Enfermedades de la infancia", ENF_INFANCIA, selection_mode="multi",
+                                        default=ant["enf_infancia_sel"], key=f"ant_inf_{V}")
+    ant["enf_infancia_otros"] = st.text_input("Otros detalles (infancia)", value=ant["enf_infancia_otros"],
+                                               placeholder="Ej. Mononucleosis a los 9 años, sin complicaciones.")
 
-    st.markdown("<div class='section-title' style='font-size:1.05rem;'>Médicos — Adultez</div>", unsafe_allow_html=True)
-    ant["enf_cronicas_sel"] = st.multiselect("Enfermedades crónicas conocidas", ENF_CRONICAS_ADULTO, default=ant["enf_cronicas_sel"])
-    ant["enf_cronicas_otros"] = st.text_area("Detalle (diagnóstico, año, tratamiento)", value=ant["enf_cronicas_otros"], height=90)
+    section_title("Médicos — Adultez")
+    ant["enf_cronicas_sel"] = st.pills("Enfermedades crónicas conocidas", ENF_CRONICAS_ADULTO, selection_mode="multi",
+                                        default=ant["enf_cronicas_sel"], key=f"ant_cron_{V}")
+    ant["enf_cronicas_otros"] = st.text_area("Detalle (diagnóstico, año, tratamiento)", value=ant["enf_cronicas_otros"],
+                                              height=90, placeholder="Ej. HTA diagnosticada en 2023, en tratamiento con Losartán.")
 
+    for key in ["infecciones", "quirurgicos", "traumatologicos", "alergicos"]:
+        cfg = L[key]
+        section_title(cfg["label"])
+        ant[key] = st.text_area(cfg["label"], value=ant[key], height=85, placeholder=cfg["placeholder"],
+                                 help=cfg["help"], label_visibility="collapsed")
+
+    section_title("Enfermedades de transmisión sexual")
+    ant["ets_sel"] = st.pills("ETS", ETS, selection_mode="multi", default=ant["ets_sel"],
+                               key=f"ant_ets_{V}", label_visibility="collapsed")
+    ant["ets_otros"] = st.text_input("Detalles ETS", value=ant["ets_otros"], placeholder="Ej. Tratamiento recibido, año del diagnóstico.")
+
+    for key in ["transfusionales"]:
+        cfg = L[key]
+        section_title(cfg["label"])
+        ant[key] = st.text_area(cfg["label"], value=ant[key], height=75, placeholder=cfg["placeholder"],
+                                 help=cfg["help"], label_visibility="collapsed")
+
+    section_title("Ginecoobstétricos (si aplica)")
     c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("<div class='section-title' style='font-size:1.05rem;'>Quirúrgicos</div>", unsafe_allow_html=True)
-        ant["quirurgicos"] = st.text_area("Cirugías previas (tipo, año, complicaciones)", value=ant["quirurgicos"], height=110, label_visibility="collapsed")
-    with c2:
-        st.markdown("<div class='section-title' style='font-size:1.05rem;'>Traumatológicos</div>", unsafe_allow_html=True)
-        ant["traumatologicos"] = st.text_area("Fracturas, caídas, lesiones", value=ant["traumatologicos"], height=110, label_visibility="collapsed")
-
-    st.markdown("<div class='section-title' style='font-size:1.05rem;'>Alérgicos</div>", unsafe_allow_html=True)
-    ant["alergicos"] = st.text_area("Medicamentos, alimentos, otros alérgenos y tipo de reacción", value=ant["alergicos"], height=90, label_visibility="collapsed")
-
-    st.markdown("<div class='section-title' style='font-size:1.05rem;'>Enfermedades de transmisión sexual</div>", unsafe_allow_html=True)
-    ant["ets_sel"] = st.multiselect("ETS", ETS, default=ant["ets_sel"], label_visibility="collapsed")
-    ant["ets_otros"] = st.text_input("Detalles ETS", value=ant["ets_otros"])
-
-    st.markdown("<div class='section-title' style='font-size:1.05rem;'>Transfusionales</div>", unsafe_allow_html=True)
-    ant["transfusionales"] = st.text_area("Número de transfusiones, motivo, reacciones", value=ant["transfusionales"], height=80, label_visibility="collapsed")
-
-    st.markdown("<div class='section-title' style='font-size:1.05rem;'>Ginecoobstétricos (si aplica)</div>", unsafe_allow_html=True)
+    ant["gineco_menarquia"] = c1.text_input("Menarquia", value=ant["gineco_menarquia"], placeholder="Ej. 12 años")
+    ant["gineco_formula"] = c2.text_input("Fórmula obstétrica (G_P_A_C_)", value=ant["gineco_formula"], placeholder="Ej. G2 P1 A1 C0")
     c1, c2 = st.columns(2)
-    ant["gineco_menarquia"] = c1.text_input("Menarquia", value=ant["gineco_menarquia"])
-    ant["gineco_formula"] = c2.text_input("Fórmula obstétrica (G_P_A_C_)", value=ant["gineco_formula"])
+    ant["gineco_fur"] = c1.text_input("Fecha de última regla (FUR)", value=ant["gineco_fur"], placeholder="Ej. 15/07/2026")
+    ant["gineco_mac"] = c2.text_input("Método anticonceptivo", value=ant["gineco_mac"], placeholder="Ej. Anticonceptivos orales")
     c1, c2 = st.columns(2)
-    ant["gineco_fur"] = c1.text_input("Fecha de última regla (FUR)", value=ant["gineco_fur"])
-    ant["gineco_mac"] = c2.text_input("Método anticonceptivo", value=ant["gineco_mac"])
-    ant["gineco_otros"] = st.text_area("Otros datos ginecoobstétricos", value=ant["gineco_otros"], height=70)
+    ant["gineco_menopausia"] = c1.text_input("Menopausia", value=ant["gineco_menopausia"], placeholder="Ej. No aplica")
+    ant["gineco_procedimientos"] = c2.text_input("Procedimientos ginecológicos", value=ant["gineco_procedimientos"], placeholder="Ej. Biopsia cervical en 2022")
+    ant["gineco_sx_menstruales"] = st.text_area("Síntomas menstruales / ciclo", value=ant["gineco_sx_menstruales"],
+                                                 height=70, placeholder="Ej. Ciclos regulares cada 28 días, sin dismenorrea.")
 
-    st.markdown("<div class='section-title' style='font-size:1.05rem;'>Inmunológicos</div>", unsafe_allow_html=True)
-    ant["inmunologicos"] = st.text_area("Esquema de vacunación", value=ant["inmunologicos"], height=80, label_visibility="collapsed")
-
-    st.markdown("<div class='section-title' style='font-size:1.05rem;'>Medicamentos actuales</div>", unsafe_allow_html=True)
-    ant["medicamentos"] = st.text_area("Fármaco, dosis, frecuencia", value=ant["medicamentos"], height=90, label_visibility="collapsed")
-
-    st.markdown("<div class='section-title' style='font-size:1.05rem;'>Epidemiológicos</div>", unsafe_allow_html=True)
-    ant["epidemiologicos"] = st.text_area("Vivienda, servicios básicos, convivientes, mascotas, saneamiento", value=ant["epidemiologicos"], height=90, label_visibility="collapsed")
+    for key in ["inmunologicos", "medicamentos", "epidemiologicos"]:
+        cfg = L[key]
+        section_title(cfg["label"])
+        ant[key] = st.text_area(cfg["label"], value=ant[key], height=85, placeholder=cfg["placeholder"],
+                                 help=cfg["help"], label_visibility="collapsed")
 
 # ============================================================
 # 4. ANTECEDENTES FAMILIARES
 # ============================================================
 elif seccion == "familiares":
-    header("Sección 4", "Antecedentes Familiares", "Agrega una fila por familiar directo relevante.")
+    header("Sección 4 de 9", "Antecedentes Familiares", "Agrega una fila por familiar directo relevante.")
     fam = hc["familiares"]
+    FV = st.session_state.setdefault("fam_form_v", 0)
 
-    with st.form("form_familiar", clear_on_submit=True):
+    with st.form(f"form_familiar_{FV}"):
         c1, c2, c3 = st.columns([2, 1.4, 1])
-        parentesco = c1.selectbox("Parentesco", PARENTESCOS_FAMILIARES)
-        estado = c2.selectbox("Estado", ["Vivo(a)", "Fallecido(a)"])
-        edad = c3.text_input("Edad")
-        enfermedades = st.multiselect("Enfermedades / causa de muerte", ENF_FAMILIARES_FRECUENTES)
-        enfermedades_otro = st.text_input("Otras enfermedades no listadas")
+        parentesco = c1.selectbox("Parentesco", PARENTESCOS_FAMILIARES, key=f"fam_parentesco_{FV}")
+        estado = c2.segmented_control("Estado", ["Vivo(a)", "Fallecido(a)"], default="Vivo(a)", key=f"fam_estado_{FV}")
+        edad = c3.text_input("Edad", key=f"fam_edad_{FV}")
+        enfermedades = st.multiselect("Enfermedades / causa de muerte", ENF_FAMILIARES_FRECUENTES, key=f"fam_enf_{FV}")
+        enfermedades_otro = st.text_input("Otras enfermedades no listadas", key=f"fam_enf_otro_{FV}")
         if st.form_submit_button("➕ Agregar familiar", use_container_width=True):
             texto_enf = ", ".join(enfermedades + ([enfermedades_otro] if enfermedades_otro else [])) or "Aparentemente sano(a)"
-            fam["filas"].append({"parentesco": parentesco, "estado": estado, "edad": edad, "enfermedades": texto_enf})
+            fam["filas"].append({"parentesco": parentesco, "estado": estado or "Vivo(a)", "edad": edad, "enfermedades": texto_enf})
+            st.session_state["fam_form_v"] += 1
             st.rerun()
 
     if fam["filas"]:
@@ -234,7 +328,7 @@ elif seccion == "familiares":
             with st.container(border=True):
                 c1, c2 = st.columns([6, 1])
                 c1.markdown(f"**{f['parentesco']}** — {f['estado']}, {f['edad']} años · {f['enfermedades']}")
-                if c2.button("Eliminar", key=f"del_fam_{i}"):
+                if c2.button("Eliminar", key=f"del_fam_{i}_{V}"):
                     fam["filas"].pop(i)
                     st.rerun()
     else:
@@ -246,103 +340,205 @@ elif seccion == "familiares":
 # 5. HÁBITOS PSICOBIOLÓGICOS
 # ============================================================
 elif seccion == "habitos":
-    header("Sección 5", "Hábitos Psicobiológicos", "Interroga cada hábito de forma sistemática.")
+    header("Sección 5 de 9", "Hábitos Psicobiológicos", "Interroga cada hábito de forma sistemática.")
     hab = hc["habitos"]
-    campos = [
-        ("tabaquico", "Tabáquicos", "Cigarrillos/día, años de consumo, índice paquetes-año"),
-        ("oh", "Alcohólicos", "Tipo de bebida, frecuencia, cantidad"),
-        ("cafeico", "Cafeicos", "Tazas al día, con o sin azúcar"),
-        ("alimentario", "Alimentarios", "Número de comidas, tipo de dieta, predominio"),
-        ("drogas", "Drogas ilícitas", "Tipo, frecuencia, vía"),
-        ("actividad_fisica", "Actividad física", "Tipo, frecuencia, duración"),
-        ("sueno", "Sueño", "Horas, calidad, dificultad para conciliar"),
-        ("sexuales", "Sexuales", "Vida sexual activa, número de parejas, protección"),
-        ("estres", "Situación personal y estrés", "Fuentes de estrés, manejo"),
-    ]
-    for key, label, placeholder in campos:
-        hab[key] = st.text_area(label, value=hab[key], height=70, placeholder=placeholder)
+
+    section_title("🚬 Tabáquicos")
+    tab = hab["tabaquico"]
+    tab["fuma"] = st.toggle("¿Fuma o ha fumado alguna vez?", value=tab["fuma"])
+    if tab["fuma"]:
+        c1, c2 = st.columns(2)
+        tab["cigarrillos_dia"] = c1.number_input("Cigarrillos por día", min_value=0, max_value=100,
+                                                  value=int(tab["cigarrillos_dia"] or 0), step=1)
+        tab["anios_fumando"] = c2.number_input("Años fumando", min_value=0, max_value=100,
+                                                value=int(tab["anios_fumando"] or 0), step=1)
+        tab["exfumador"] = st.toggle("Es exfumador (ya no fuma actualmente)", value=tab["exfumador"])
+        if tab["exfumador"]:
+            tab["anios_desde_dejo"] = st.number_input("¿Hace cuántos años dejó de fumar?", min_value=0, max_value=100,
+                                                       value=int(tab["anios_desde_dejo"] or 0), step=1)
+
+        ipa = indice_paquete_anio(tab)
+        clasif, color = clasificar_ipa(ipa)
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            st.metric("Índice paquete-año", ipa, help="Fórmula: (cigarrillos/día ÷ 20) × años fumando")
+        with c2:
+            st.write("")
+            st.badge(clasif, color=color)
+        tab["notas"] = st.text_input("Notas adicionales", value=tab["notas"], placeholder="Ej. Fumador pasivo en el hogar.")
+    else:
+        tab["notas"] = st.text_input("Notas (opcional)", value=tab["notas"], placeholder="Ej. Niega hábito tabáquico.")
+
+    for key, label, help_txt, placeholder in [
+        ("oh", "🍷 Alcohólicos", "Tipo de bebida, frecuencia, cantidad, ¿llega a la embriaguez?", "Ej. Cerveza los fines de semana, 3-4 unidades."),
+        ("cafeico", "☕ Cafeicos", "Tazas al día, con o sin azúcar", "Ej. 2 tazas de café al día, con 1 cucharada de azúcar."),
+        ("alimentario", "🍽️ Alimentarios", "Número de comidas, tipo de dieta, predominio, cantidades", "Ej. 3 comidas al día, dieta balanceada."),
+        ("drogas", "💊 Drogas ilícitas", "Tipo, dónde y cuántas, frecuencia, vía", "Ej. Niega consumo de drogas ilícitas."),
+        ("actividad_fisica", "🏃 Actividad física / Ejercicio", "Tipo, frecuencia, duración, adecuado o sedentario", "Ej. Sedentario."),
+        ("sueno", "😴 Sueño", "Horas, continuo o interrumpido, matutino/vespertino/diurno", "Ej. 6-7 horas nocturnas continuas."),
+        ("sexuales", "💞 Sexuales", "Vida sexual activa, número de parejas, protección", "Ej. Vida sexual activa, pareja única, uso de preservativo."),
+        ("estres", "🧘 Situación personal y estrés", "Fuentes de estrés, manejo", "Ej. Refiere estrés académico moderado."),
+    ]:
+        section_title(label)
+        hab[key] = st.text_area(label, value=hab[key], height=70, placeholder=placeholder, help=help_txt, label_visibility="collapsed")
 
 # ============================================================
 # 6. FACTORES DE RIESGO CARDIOVASCULAR
 # ============================================================
 elif seccion == "frcv":
-    header("Sección 6", "Factores de Riesgo Cardiovascular", "Clasifica los factores presentes en el paciente.")
+    header("Sección 6 de 9", "Factores de Riesgo Cardiovascular", "Clasifica los factores presentes en el paciente.")
     frcv = hc["frcv"]
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("<div class='section-title' style='font-size:1.05rem;'>Modificables</div>", unsafe_allow_html=True)
-        frcv["modificables_sel"] = st.multiselect("Modificables", FRCV_MODIFICABLES, default=frcv["modificables_sel"], label_visibility="collapsed")
-    with c2:
-        st.markdown("<div class='section-title' style='font-size:1.05rem;'>No modificables</div>", unsafe_allow_html=True)
-        frcv["no_modificables_sel"] = st.multiselect("No modificables", FRCV_NO_MODIFICABLES, default=frcv["no_modificables_sel"], label_visibility="collapsed")
+    section_title("Modificables")
+    frcv["modificables_sel"] = st.pills("Modificables", FRCV_MODIFICABLES, selection_mode="multi",
+                                         default=frcv["modificables_sel"], key=f"frcv_mod_{V}", label_visibility="collapsed")
+    section_title("No modificables")
+    frcv["no_modificables_sel"] = st.pills("No modificables", FRCV_NO_MODIFICABLES, selection_mode="multi",
+                                            default=frcv["no_modificables_sel"], key=f"frcv_nomod_{V}", label_visibility="collapsed")
     frcv["otros"] = st.text_area("Notas adicionales", value=frcv["otros"], height=80)
 
 # ============================================================
 # 7. REVISIÓN POR SISTEMAS
 # ============================================================
 elif seccion == "ros":
-    header("Sección 7", "Revisión por Sistemas", "Interrogatorio funcional completo, aparato por aparato.")
-    guia("Selecciona los síntomas que el paciente refiere activamente en cada aparato. Lo no seleccionado se asumirá como negado en la historia final.")
+    header("Sección 7 de 9", "Revisión por Sistemas", "Interrogatorio funcional completo, aparato por aparato.")
+    st.caption("Selecciona lo que el paciente refiere activamente. Lo no seleccionado se asume negado en la historia final.")
     ros = hc["ros"]
     for sec in REVISION_SISTEMAS:
-        with st.expander(f"{sec['icono']}  {sec['label']}", expanded=False):
-            data = ros[sec["key"]]
-            data["sintomas"] = st.multiselect("Síntomas que refiere", sec["sintomas"], default=data["sintomas"], key=f"ros_sint_{sec['key']}", label_visibility="collapsed")
-            data["detalles"] = st.text_area("Detalles / características del síntoma", value=data["detalles"], key=f"ros_det_{sec['key']}", height=70, placeholder="Tiempo de evolución, intensidad, factores agravantes/atenuantes...")
+        data = ros[sec["key"]]
+        etiqueta = f"{sec['icono']}  {sec['label']}"
+        with st.expander(etiqueta, expanded=False):
+            if sec.get("guia"):
+                st.markdown(f"<div class='mini-guia'>{sec['guia']}</div>", unsafe_allow_html=True)
+            data["sintomas"] = st.pills("Síntomas que refiere", sec["sintomas"], selection_mode="multi",
+                                         default=data["sintomas"], key=f"ros_sint_{sec['key']}_{V}",
+                                         label_visibility="collapsed")
+            data["detalles"] = st.text_area("Detalles / características", value=data["detalles"],
+                                             key=f"ros_det_{sec['key']}_{V}", height=70,
+                                             placeholder="Tiempo de evolución, intensidad, factores agravantes/atenuantes...",
+                                             label_visibility="collapsed")
 
 # ============================================================
 # 8. EXAMEN FÍSICO
 # ============================================================
 elif seccion == "examen":
-    header("Sección 8", "Examen Físico", "Signos vitales y exploración por sistemas.")
+    header("Sección 8 de 9", "Examen Físico", "Signos vitales, exploración por sistemas y maniobras específicas.")
     ex = hc["examen"]
 
-    st.markdown("<div class='section-title' style='font-size:1.05rem;'>Signos vitales</div>", unsafe_allow_html=True)
+    section_title("Signos vitales")
     sv = ex["signos_vitales"]
     c1, c2, c3, c4 = st.columns(4)
-    sv["temperatura"] = c1.text_input("Temperatura (°C)", value=sv["temperatura"])
-    sv["pulso"] = c2.text_input("Pulso (lpm)", value=sv["pulso"])
-    sv["fr"] = c3.text_input("Frec. respiratoria (rpm)", value=sv["fr"])
-    sv["spo2"] = c4.text_input("SpO2 (%)", value=sv["spo2"])
+    sv["temperatura"] = c1.text_input("Temperatura (°C)", value=sv["temperatura"], placeholder="36.5")
+    sv["pulso"] = c2.text_input("Pulso (lpm)", value=sv["pulso"], placeholder="78")
+    sv["fr"] = c3.text_input("Frec. respiratoria (rpm)", value=sv["fr"], placeholder="16")
+    sv["spo2"] = c4.text_input("SpO2 (%)", value=sv["spo2"], placeholder="98")
     c1, c2, c3, c4 = st.columns(4)
-    sv["ta_sistolica"] = c1.text_input("T.A. sistólica", value=sv["ta_sistolica"])
-    sv["ta_diastolica"] = c2.text_input("T.A. diastólica", value=sv["ta_diastolica"])
-    sv["peso"] = c3.text_input("Peso (kg)", value=sv["peso"])
-    sv["talla"] = c4.text_input("Talla (cm)", value=sv["talla"])
-    sv["llenado_capilar"] = st.text_input("Llenado capilar", value=sv["llenado_capilar"])
+    sv["ta_sistolica"] = c1.text_input("T.A. sistólica", value=sv["ta_sistolica"], placeholder="120")
+    sv["ta_diastolica"] = c2.text_input("T.A. diastólica", value=sv["ta_diastolica"], placeholder="80")
+    sv["peso"] = c3.text_input("Peso (kg)", value=sv["peso"], placeholder="70")
+    sv["talla"] = c4.text_input("Talla (cm)", value=sv["talla"], placeholder="170")
+    sv["llenado_capilar"] = st.text_input("Llenado capilar", value=sv["llenado_capilar"], placeholder="< 3 segundos")
 
     st.write("")
-    st.markdown("<div class='section-title' style='font-size:1.05rem;'>Exploración por sistemas</div>", unsafe_allow_html=True)
-    guia("Marca 'Normal' para usar automáticamente la plantilla estándar (editable), o 'Anormal' para elegir hallazgos y describirlos.")
+    section_title("Exploración por sistemas")
+    st.caption("Marca 'Normal' para usar la plantilla estándar (editable), o 'Anormal' para elegir hallazgos.")
 
     sistemas = ex["sistemas"]
+    extra = ex["extra"]
+    ESTADOS = ["No explorado", "Normal", "Anormal"]
+
     for sec in EXAMEN_FISICO_SISTEMAS:
         data = sistemas[sec["key"]]
         with st.expander(f"{sec['icono']}  {sec['label']}", expanded=False):
-            data["estado"] = st.radio("Estado", ["No explorado", "Normal", "Anormal"],
-                                       index=["No explorado", "Normal", "Anormal"].index(data["estado"]),
-                                       key=f"ef_estado_{sec['key']}", horizontal=True, label_visibility="collapsed")
+            if sec.get("guia"):
+                guia_popover(sec["guia"])
+            data["estado"] = st.segmented_control("Estado", ESTADOS, default=data["estado"],
+                                                    key=f"ef_estado_{sec['key']}_{V}", required=True)
             if data["estado"] == "Normal":
-                data["texto"] = st.text_area("Descripción", value=data["texto"] or sec["normal"], key=f"ef_texto_{sec['key']}", height=90)
+                data["texto"] = st.text_area("Descripción", value=data["texto"] or sec["normal"],
+                                              key=f"ef_texto_{sec['key']}_{V}", height=90)
             elif data["estado"] == "Anormal":
-                data["anormales"] = st.multiselect("Hallazgos anormales", sec["anormales"], default=data["anormales"], key=f"ef_anorm_{sec['key']}")
-                data["texto"] = st.text_area("Descripción detallada", value=data["texto"], key=f"ef_texto2_{sec['key']}", height=90,
+                data["anormales"] = st.pills("Hallazgos anormales", sec["anormales"], selection_mode="multi",
+                                              default=data["anormales"], key=f"ef_anorm_{sec['key']}_{V}")
+                data["texto"] = st.text_area("Descripción detallada", value=data["texto"],
+                                              key=f"ef_texto2_{sec['key']}_{V}", height=90,
                                               placeholder="Localización, características, severidad...")
+
+            # ---- Bloques especiales por sistema ----
+            if data["estado"] != "No explorado" and sec.get("extra") == "fitzpatrick":
+                st.caption("Fototipo cutáneo")
+                extra["piel"]["fitzpatrick"] = st.selectbox(
+                    "Fototipo de Fitzpatrick", FITZPATRICK_OPCIONES,
+                    index=_idx(FITZPATRICK_OPCIONES, extra["piel"]["fitzpatrick"]), key=f"fitz_{V}",
+                )
+
+            elif data["estado"] != "No explorado" and sec.get("extra") == "ojos_reflejos":
+                st.caption("Reflejos pupilares")
+                op = ["No evaluado", "Presente", "Ausente"]
+                c1, c2 = st.columns(2)
+                extra["ojos"]["fotomotor"] = c1.selectbox("Reflejo fotomotor", op, index=_idx(op, extra["ojos"]["fotomotor"]), key=f"fotomotor_{V}")
+                extra["ojos"]["convergencia"] = c2.selectbox("Reflejo de convergencia", op, index=_idx(op, extra["ojos"]["convergencia"]), key=f"converg_{V}")
+
+            elif data["estado"] != "No explorado" and sec.get("extra") == "weber_rinne":
+                st.caption("Pruebas de diapasón")
+                c1, c2 = st.columns(2)
+                extra["oidos"]["weber"] = c1.selectbox("Weber", WEBER_OPCIONES, index=_idx(WEBER_OPCIONES, extra["oidos"]["weber"]), key=f"weber_{V}")
+                extra["oidos"]["rinne"] = c2.selectbox("Rinne", RINNE_OPCIONES, index=_idx(RINNE_OPCIONES, extra["oidos"]["rinne"]), key=f"rinne_{V}")
+
+            elif data["estado"] != "No explorado" and sec.get("extra") == "abdomen_maniobras":
+                st.caption("Maniobras específicas")
+                cols = st.columns(4)
+                claves = ["murphy", "blumberg", "mcburney", "rovsing"]
+                for i, (k, lab) in enumerate(zip(claves, ABDOMEN_MANIOBRAS)):
+                    extra["abdomen"][k] = cols[i].selectbox(lab, ESTADO_MANIOBRA, index=_idx(ESTADO_MANIOBRA, extra["abdomen"][k]), key=f"ab_{k}_{V}")
+                c1, c2 = st.columns(2)
+                extra["abdomen"]["puno_percusion_der"] = c1.selectbox("Puño percusión derecho", ESTADO_MANIOBRA,
+                                                                       index=_idx(ESTADO_MANIOBRA, extra["abdomen"]["puno_percusion_der"]), key=f"pp_der_{V}")
+                extra["abdomen"]["puno_percusion_izq"] = c2.selectbox("Puño percusión izquierdo", ESTADO_MANIOBRA,
+                                                                       index=_idx(ESTADO_MANIOBRA, extra["abdomen"]["puno_percusion_izq"]), key=f"pp_izq_{V}")
+
+            elif data["estado"] != "No explorado" and sec.get("extra") == "neuro_completo":
+                st.caption("Reflejos osteotendinosos")
+                cols = st.columns(len(REFLEJOS_OSTEOTENDINOSOS))
+                for i, r in enumerate(REFLEJOS_OSTEOTENDINOSOS):
+                    extra["neurologico"]["reflejos"][r] = cols[i].selectbox(
+                        r, GRADOS_REFLEJO, index=_idx(GRADOS_REFLEJO, extra["neurologico"]["reflejos"][r]), key=f"reflejo_{r}_{V}",
+                    )
+                st.caption("Signos meníngeos")
+                extra["neurologico"]["signos_meningeos"] = st.pills(
+                    "Signos meníngeos presentes", SIGNOS_MENINGEOS, selection_mode="multi",
+                    default=extra["neurologico"]["signos_meningeos"], key=f"meningeos_{V}", label_visibility="collapsed",
+                )
+                st.caption("Pares craneales")
+                extra["neurologico"]["pares_craneales_normal"] = st.toggle(
+                    "Los 12 pares craneales están sin alteraciones", value=extra["neurologico"]["pares_craneales_normal"], key=f"pares_ok_{V}",
+                )
+                if extra["neurologico"]["pares_craneales_normal"]:
+                    st.markdown(f"<div class='mini-guia'>{PARES_CRANEALES_TXT}</div>", unsafe_allow_html=True)
+                else:
+                    extra["neurologico"]["pares_craneales_detalle"] = st.text_area(
+                        "Describe la alteración encontrada", value=extra["neurologico"]["pares_craneales_detalle"],
+                        key=f"pares_det_{V}", height=70, placeholder="Ej. Parálisis facial periférica derecha (VII par).",
+                    )
 
 # ============================================================
 # 9. SÍNTESIS DIAGNÓSTICA
 # ============================================================
 elif seccion == "sintesis":
-    header("Sección 9", "Síntesis Diagnóstica", "Cierra la historia con el razonamiento clínico.")
+    header("Sección 9 de 9", "Síntesis Diagnóstica", "Cierra la historia con el razonamiento clínico.")
     sin = hc["sintesis"]
-    sin["datos_positivos"] = st.text_area("Resumen de datos positivos (ordenados por importancia)", value=sin["datos_positivos"], height=140)
+    sin["datos_positivos"] = st.text_area("Resumen de datos positivos (ordenados por importancia)",
+                                           value=sin["datos_positivos"], height=140,
+                                           placeholder="1. Dolor abdominal tipo cólico...\n2. Vómitos de contenido alimentario...")
 
-    guia("Sugerencias de síndromes frecuentes en medicina interna — puedes usarlas como punto de partida.")
-    sugeridos = st.multiselect("Síndromes sugeridos", DIAGNOSTICOS_SINDROMATICOS_SUGERIDOS)
-    sin["diagnosticos_sindromaticos"] = st.text_area("Impresiones diagnósticas / diagnóstico sindromático (en orden de importancia)",
-                                                       value=sin["diagnosticos_sindromaticos"] or "\n".join(f"- {s}" for s in sugeridos), height=140)
+    st.caption("Síndromes frecuentes en medicina interna — puedes usarlos como punto de partida.")
+    sugeridos = st.pills("Síndromes sugeridos", DIAGNOSTICOS_SINDROMATICOS_SUGERIDOS, selection_mode="multi",
+                          key=f"sind_sugeridos_{V}", label_visibility="collapsed")
+    valor_diag = sin["diagnosticos_sindromaticos"] or "\n".join(f"- {s}" for s in sugeridos)
+    sin["diagnosticos_sindromaticos"] = st.text_area("Impresiones diagnósticas (en orden de importancia)",
+                                                       value=valor_diag, height=140)
     sin["observaciones"] = st.text_area("Observaciones", value=sin["observaciones"], height=100)
-    sin["diagnostico_definitivo"] = st.text_area("Diagnóstico definitivo (al cerrar el caso)", value=sin["diagnostico_definitivo"], height=100)
+    sin["diagnostico_definitivo"] = st.text_area("Diagnóstico definitivo (al cerrar el caso)",
+                                                   value=sin["diagnostico_definitivo"], height=100)
     sin["plan"] = st.text_area("Plan / Tratamiento", value=sin["plan"], height=120)
 
 # ============================================================
@@ -366,12 +562,8 @@ elif seccion == "vista_previa":
     nombre_archivo = f"historia_clinica_{(fil['apellidos'] or 'paciente').strip().replace(' ', '_').lower()}.pdf"
 
     st.download_button(
-        "⬇️  Descargar Historia Clínica en PDF",
-        data=pdf_bytes,
-        file_name=nombre_archivo,
-        mime="application/pdf",
-        use_container_width=True,
-        type="primary",
+        "⬇️  Descargar Historia Clínica en PDF", data=pdf_bytes, file_name=nombre_archivo,
+        mime="application/pdf", use_container_width=True, type="primary",
     )
 
     st.write("")
@@ -382,3 +574,23 @@ elif seccion == "vista_previa":
             llenos, total = progreso_seccion(key)
             estado = "✅ Completo" if llenos == total and total > 0 else ("🟡 Parcial" if llenos else "⚪ Vacío")
             st.markdown(f"**{icono} {label}** — {estado} ({llenos}/{total})")
+
+# ============================================================
+# NAVEGACIÓN INFERIOR — Anterior / Siguiente
+# ============================================================
+if seccion != "vista_previa":
+    st.write("")
+    st.markdown("<div style='border-top:1px solid var(--line); margin: 0.6rem 0 1.1rem 0;'></div>", unsafe_allow_html=True)
+    claves = [s[0] for s in SECCIONES]
+    idx_actual = claves.index(seccion)
+    c1, c2, c3 = st.columns([1, 3, 1])
+    with c1:
+        if idx_actual > 0:
+            if st.button("← Anterior", use_container_width=True):
+                st.session_state["seccion_actual"] = claves[idx_actual - 1]
+                st.rerun()
+    with c3:
+        siguiente_label = "Ver Historia →" if claves[idx_actual + 1] == "vista_previa" else "Siguiente →"
+        if st.button(siguiente_label, use_container_width=True, type="primary"):
+            st.session_state["seccion_actual"] = claves[idx_actual + 1]
+            st.rerun()
