@@ -1,13 +1,15 @@
 import streamlit as st
 from datetime import date
 
-from utils.styles import inject_css, masthead_html, progress_capsule_html
+from utils.styles import inject_css, masthead_html, progress_capsule_html, selector_tema
 from utils.state import (
     init_state, reset_state, SECCIONES, progreso_seccion, progreso_global,
     APP_AUTHOR, indice_paquete_anio, clasificar_ipa,
 )
 from utils.pdf_export import generar_pdf
 from utils.narrativa import componer_narrativa
+from utils import supa
+from utils.legal import requerir_aceptacion_terminos, version_footer, APP_VERSION
 from data.campos import (
     ENF_INFANCIA, ENF_CRONICAS_ADULTO, ETS, CAMPOS_ANTECEDENTES_LIBRES,
     PARENTESCOS_FAMILIARES, ENF_FAMILIARES_FRECUENTES,
@@ -27,9 +29,31 @@ st.set_page_config(
 )
 
 inject_css()
+
+# ---- 1. Login (si Supabase está configurado) ----
+if not supa.requerir_login():
+    st.stop()
+
+# ---- 2. Términos de uso (una vez por cuenta) ----
+if not requerir_aceptacion_terminos():
+    st.stop()
+
 init_state()
 hc = st.session_state["hc"]
 V = st.session_state["form_version"]  # sufijo de todas las keys explícitas — ver nota en utils/state.py
+
+# ---- 3. Cargar borrador guardado (solo la primera vez que carga la sesión) ----
+if supa.supabase_configurado() and not st.session_state.get("_borrador_cargado"):
+    _borrador = supa.cargar_borrador()
+    if _borrador:
+        st.session_state["hc"] = _borrador
+        hc = st.session_state["hc"]
+    st.session_state["_borrador_cargado"] = True
+
+
+def _autosave():
+    if supa.supabase_configurado():
+        supa.guardar_borrador(hc)
 
 
 def _idx(options, value, default=0):
@@ -53,6 +77,17 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
+    if "auth_user" in st.session_state:
+        st.caption(f"👤 {st.session_state['auth_user']['email']}")
+        if st.button("Cerrar sesión", use_container_width=True):
+            _autosave()
+            supa.cerrar_sesion()
+
+    st.write("")
+    st.caption("Tema")
+    selector_tema()
+    st.write("")
+
     pct = progreso_global()
     st.caption(f"Progreso general — **{pct}%**")
     st.progress(pct / 100)
@@ -67,12 +102,14 @@ with st.sidebar:
         etiqueta_btn = f"{icono}  {label}" + (f"   {badge}" if badge else "")
         if st.button(etiqueta_btn, key=f"nav_{key}", use_container_width=True,
                      type="primary" if activo else "secondary"):
+            _autosave()
             st.session_state["seccion_actual"] = key
             st.rerun()
 
     st.markdown("<div style='border-top:1px solid var(--line); margin:0.8rem 0;'></div>", unsafe_allow_html=True)
     if st.button("📄  Vista Previa y PDF", key="nav_preview", use_container_width=True,
                  type="primary" if st.session_state["seccion_actual"] == "vista_previa" else "secondary"):
+        _autosave()
         st.session_state["seccion_actual"] = "vista_previa"
         st.rerun()
 
@@ -90,6 +127,7 @@ with st.sidebar:
         c1, c2 = st.columns(2)
         if c1.button("Sí, borrar", use_container_width=True):
             reset_state()
+            _autosave()
             st.session_state["confirmar_reset"] = False
             st.rerun()
         if c2.button("Cancelar", use_container_width=True):
@@ -558,6 +596,7 @@ elif seccion == "vista_previa":
         c3.metric("Progreso general", f"{progreso_global()}%")
 
     st.write("")
+    _autosave()
     pdf_bytes = generar_pdf(hc)
     nombre_archivo = f"historia_clinica_{(fil['apellidos'] or 'paciente').strip().replace(' ', '_').lower()}.pdf"
 
@@ -587,10 +626,14 @@ if seccion != "vista_previa":
     with c1:
         if idx_actual > 0:
             if st.button("← Anterior", use_container_width=True):
+                _autosave()
                 st.session_state["seccion_actual"] = claves[idx_actual - 1]
                 st.rerun()
     with c3:
         siguiente_label = "Ver Historia →" if claves[idx_actual + 1] == "vista_previa" else "Siguiente →"
         if st.button(siguiente_label, use_container_width=True, type="primary"):
+            _autosave()
             st.session_state["seccion_actual"] = claves[idx_actual + 1]
             st.rerun()
+
+version_footer()
