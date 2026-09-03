@@ -217,7 +217,26 @@ div[data-testid="stVerticalBlockBorderWrapper"] {{
 
 .mini-guia {{ font-size: 0.78rem; color: var(--ink-faint); font-style: italic; margin: -0.3rem 0 0.7rem 0; }}
 
-footer, #MainMenu, [data-testid="stToolbar"] {{ visibility: hidden; height: 0; }}
+footer, [data-testid="stMainMenu"] {{ visibility: hidden; height: 0; }}
+
+/* Barra superior de Streamlit: que combine con el tema en vez de quedar blanca */
+[data-testid="stHeader"] {{
+    background: var(--bg) !important;
+    height: 2.6rem;
+}}
+
+/* El botón para abrir/cerrar el sidebar SIEMPRE debe verse (antes quedaba
+   tapado) — lo forzamos visible y con buen contraste. */
+[data-testid="stSidebarCollapseButton"] {{
+    visibility: visible !important;
+    opacity: 1 !important;
+    display: flex !important;
+}}
+[data-testid="stSidebarCollapseButton"] button {{
+    color: var(--navy) !important;
+    background: var(--gold-tint) !important;
+    border-radius: 8px !important;
+}}
 
 /* ============ MÓVIL ============ */
 @media (max-width: 640px) {{
