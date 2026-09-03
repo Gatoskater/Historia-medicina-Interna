@@ -18,7 +18,7 @@ cosas que un abogado sí debe mirar con cuidado:
 import streamlit as st
 from datetime import datetime, timezone
 
-APP_VERSION = "2.2.1"
+APP_VERSION = "2.2.2"
 
 TERMINOS_TEXTO = """
 **Términos de Uso — QuickChart (Historia Clínica · Medicina Interna)**

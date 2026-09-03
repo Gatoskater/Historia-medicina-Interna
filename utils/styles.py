@@ -219,6 +219,23 @@ div[data-testid="stVerticalBlockBorderWrapper"] {{
 
 footer, [data-testid="stMainMenu"] {{ visibility: hidden; height: 0; }}
 
+/* Insignia de "Fork / GitHub" que agrega Streamlit Community Cloud (no es
+   parte de esta app, la inyecta el hosting) — se oculta por selector y,
+   como respaldo, se tapa con un parche del color del tema, por si el
+   selector cambia en una actualización de la plataforma. */
+.stAppDeployButton,
+div[class*="viewerBadge"],
+a[href*="github.com"][class*="viewerBadge"] {{
+    visibility: hidden !important;
+    display: none !important;
+}}
+#tapa-badge-cloud {{
+    position: fixed;
+    bottom: 0; right: 0;
+    width: 220px; height: 60px;
+    background: var(--bg);
+    z-index: 999999;
+}}
 /* Barra superior de Streamlit: que combine con el tema en vez de quedar blanca */
 [data-testid="stHeader"] {{
     background: var(--bg) !important;
@@ -259,6 +276,7 @@ footer, [data-testid="stMainMenu"] {{ visibility: hidden; height: 0; }}
 def inject_css():
     tema = st.session_state.get("tema", "claro")
     st.markdown(css_para_tema(tema), unsafe_allow_html=True)
+    st.markdown('<div id="tapa-badge-cloud"></div>', unsafe_allow_html=True)
 
 
 def selector_tema():
