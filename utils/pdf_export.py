@@ -141,7 +141,7 @@ def _draw_footer(canvas, doc):
     canvas.setFont("Inter", 7.6)
     canvas.setFillColor(INK_FAINT)
     canvas.drawString(1.8 * cm, 0.95 * cm,
-                       f"Historia Clínica · Medicina Interna — aplicación desarrollada por {APP_AUTHOR}")
+                       f"QuickChart — Historia Clínica · Medicina Interna, desarrollada por {APP_AUTHOR}")
     canvas.drawRightString(letter[0] - 1.8 * cm, 0.95 * cm, f"Página {doc.page}")
     canvas.restoreState()
 
@@ -163,6 +163,10 @@ def generar_pdf(hc: dict) -> bytes:
     nombre_completo = f"{fil.get('nombres','').strip()} {fil.get('apellidos','').strip()}".strip() or "Paciente sin nombre registrado"
 
     # ---------- Portada ----------
+    story.append(Paragraph("QUICKCHART", ParagraphStyle(
+        "marca", parent=styles["Subtitulo"], fontName="Inter-SemiBold", fontSize=8.5,
+        textColor=GOLD_DEEP, alignment=TA_CENTER, spaceAfter=2,
+    )))
     if medico.get("hospital"):
         story.append(Paragraph(medico["hospital"].upper(), styles["Subtitulo"]))
     story.append(Paragraph("Historia Clínica", styles["TituloPortada"]))

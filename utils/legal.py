@@ -18,13 +18,13 @@ cosas que un abogado sí debe mirar con cuidado:
 import streamlit as st
 from datetime import datetime, timezone
 
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.2.0"
 
 TERMINOS_TEXTO = """
-**Términos de Uso — Historia Clínica · Medicina Interna**
+**Términos de Uso — QuickChart (Historia Clínica · Medicina Interna)**
 *Última actualización: 2026*
 
-**1. Naturaleza de la herramienta.** Esta aplicación es una herramienta de
+**1. Naturaleza de la herramienta.** QuickChart es una herramienta de
 apoyo para la redacción y organización de historias clínicas durante la
 formación médica. No sustituye el juicio clínico, la supervisión docente
 ni ninguna guía o protocolo institucional. No es un dispositivo médico ni
@@ -120,7 +120,7 @@ def version_footer():
     st.markdown(
         f"""
         <div style="text-align:center; color:#9a9ea8; font-size:0.72rem; padding: 1.2rem 0 0.4rem 0;">
-            Historia Clínica · Medicina Interna — versión {APP_VERSION}
+            QuickChart · Historia Clínica — versión {APP_VERSION}
         </div>
         """,
         unsafe_allow_html=True,

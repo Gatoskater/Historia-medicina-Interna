@@ -22,7 +22,7 @@ from data.campos import (
 )
 
 st.set_page_config(
-    page_title="Historia Clínica | Medicina Interna",
+    page_title="QuickChart | Historia Clínica",
     page_icon="🩺",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -70,8 +70,8 @@ with st.sidebar:
     st.markdown(
         """
         <div class="sidebar-brand">
-            <div class="mark">Historia Clínica</div>
-            <div class="sub">Medicina Interna</div>
+            <div class="mark">QuickChart</div>
+            <div class="sub">Historia Clínica · Medicina Interna</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -84,10 +84,6 @@ with st.sidebar:
             supa.cerrar_sesion()
 
     st.write("")
-    st.caption("Tema")
-    selector_tema()
-    st.write("")
-
     pct = progreso_global()
     st.caption(f"Progreso general — **{pct}%**")
     st.progress(pct / 100)
@@ -114,7 +110,11 @@ with st.sidebar:
         st.rerun()
 
     st.write("")
-    with st.expander("⚙️ Médico / institución"):
+    with st.expander("⚙️ Configuración"):
+        st.caption("Tema")
+        selector_tema()
+        st.write("")
+        st.caption("Médico / institución")
         hc["medico"]["nombre"] = st.text_input("Tu nombre", value=hc["medico"]["nombre"], placeholder="Ej. Jade Díaz")
         hc["medico"]["hospital"] = st.text_input("Institución / Hospital", value=hc["medico"]["hospital"], placeholder="Ej. Hospital Vargas de Caracas")
         hc["medico"]["servicio"] = st.text_input("Servicio", value=hc["medico"]["servicio"], placeholder="Ej. Medicina Interna")

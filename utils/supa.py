@@ -163,10 +163,10 @@ def _pantalla_login():
         """
         <div style="text-align:center; padding: 2.2rem 0 1rem 0;">
             <div style="font-family:'Playfair Display', serif; font-weight:700; font-size:2rem; color:#101a34;">
-                Historia Clínica
+                QuickChart
             </div>
-            <div style="font-family:'Playfair Display', serif; font-style:italic; color:#8f6d3a; font-size:1.1rem;">
-                Medicina Interna
+            <div style="font-family:'Playfair Display', serif; font-style:italic; color:#8f6d3a; font-size:1.05rem;">
+                Historia Clínica · Medicina Interna
             </div>
         </div>
         """,

@@ -125,16 +125,17 @@ section[data-testid="stSidebar"] [data-testid="stBaseButton-primary"] p {{ color
 /* ============ MASTHEAD ============ */
 .masthead {{
     background: linear-gradient(120deg, var(--navy) 0%, var(--navy-2) 100%);
-    border-radius: var(--radius); padding: 1.1rem 1.4rem; margin-bottom: 1rem;
-    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;
+    border-radius: var(--radius); padding: 1.5rem 1.5rem 1.25rem 1.5rem; margin-bottom: 1rem;
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.6rem;
     box-shadow: 0 10px 28px rgba(16,26,52,0.18);
 }}
-.masthead .mh-title {{ font-family:'Playfair Display', serif; font-weight:700; font-size:1.35rem; color:#fdfaf4; }}
-.masthead .mh-sub {{ font-family:'Playfair Display', serif; font-style:italic; font-size:0.88rem; color: #d8c8a8; margin-top:0.05rem; }}
+.masthead .mh-brand {{ display: flex; flex-direction: column; gap: 0.15rem; }}
+.masthead .mh-title {{ font-family:'Playfair Display', serif; font-weight:700; font-size:1.5rem; line-height:1.35; color:#fdfaf4; }}
+.masthead .mh-sub {{ font-family:'Playfair Display', serif; font-style:italic; font-size:0.86rem; line-height:1.3; color: #d8c8a8; }}
 .masthead .mh-credit {{
     font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.1em;
     color: var(--navy); background: var(--gold); padding: 0.3rem 0.65rem;
-    border-radius: 999px; font-weight: 700; white-space: nowrap;
+    border-radius: 999px; font-weight: 700; white-space: nowrap; align-self: flex-start; margin-top: 0.15rem;
 }}
 
 .progress-capsule-track {{ background: var(--line); border-radius: 999px; height: 8px; overflow: hidden; margin: 0 0 1.2rem 0; }}
@@ -221,7 +222,7 @@ footer, #MainMenu, [data-testid="stToolbar"] {{ visibility: hidden; height: 0; }
 /* ============ MÓVIL ============ */
 @media (max-width: 640px) {{
     [data-testid="stMainBlockContainer"] {{ padding-left: 0.9rem !important; padding-right: 0.9rem !important; padding-top: 0.6rem !important; }}
-    .masthead {{ padding: 0.85rem 1rem; border-radius: 10px; }}
+    .masthead {{ padding: 1.1rem 1.1rem 0.9rem 1.1rem; border-radius: 10px; }}
     .masthead .mh-title {{ font-size: 1.12rem; }}
     .masthead .mh-sub {{ font-size: 0.78rem; }}
     .masthead .mh-credit {{ font-size: 0.58rem; padding: 0.25rem 0.55rem; }}
@@ -255,11 +256,11 @@ def selector_tema():
         st.rerun()
 
 
-def masthead_html(credit_name: str, subtitle: str = "Medicina Interna"):
+def masthead_html(credit_name: str, subtitle: str = "Historia Clínica · Medicina Interna"):
     return f"""
     <div class="masthead">
-        <div>
-            <div class="mh-title">Historia Clínica</div>
+        <div class="mh-brand">
+            <div class="mh-title">QuickChart</div>
             <div class="mh-sub">{subtitle}</div>
         </div>
         <div class="mh-credit">Por {credit_name}</div>
