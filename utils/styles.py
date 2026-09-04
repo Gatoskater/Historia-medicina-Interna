@@ -185,6 +185,48 @@ div[data-testid="stVerticalBlockBorderWrapper"] {{
 [data-testid="stWidgetLabel"] p {{ font-weight: 500; color: var(--ink); font-size: 0.88rem; }}
 [data-testid="stSelectbox"] div[data-baseweb="select"] > div {{ background: var(--surface) !important; border-color: var(--line) !important; min-height: 2.6rem; }}
 
+/* Texto de ejemplo (placeholder) dentro de los campos — antes se quedaba
+   oscuro fijo y era ilegible en el tema Oscuro. */
+.stTextInput input::placeholder, .stTextArea textarea::placeholder {{
+    color: var(--ink-faint) !important; opacity: 1 !important;
+}}
+
+/* Pills / segmented control: el estado NO seleccionado usa un blanco fijo
+   de Streamlit que no sigue el tema — se fuerza aquí. El estado
+   SELECCIONADO lo sigue pintando Streamlit en dorado (a propósito). */
+[data-testid="stButtonGroup"] button {{
+    background-color: var(--surface) !important;
+    border-color: var(--line) !important;
+}}
+[data-testid="stButtonGroup"] button p, [data-testid="stButtonGroup"] button div {{
+    color: var(--ink) !important;
+}}
+[data-testid="stButtonGroup"] button[aria-checked="true"] p,
+[data-testid="stButtonGroup"] button[aria-checked="true"] div {{
+    color: var(--navy) !important;
+}}
+
+/* Menús desplegables (selectbox, multiselect) — se renderizan aparte y
+   también se quedaban blancos fijos. */
+div[data-baseweb="popover"] div[data-baseweb="menu"],
+div[data-baseweb="menu"], ul[role="listbox"] {{
+    background: var(--surface) !important;
+}}
+li[role="option"], div[data-baseweb="menu"] li {{
+    background: var(--surface) !important; color: var(--ink) !important;
+}}
+li[role="option"]:hover {{ background: var(--gold-tint) !important; }}
+
+/* Multiselect (formulario de familiares) y "tags" seleccionados */
+[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {{ background: var(--surface) !important; }}
+span[data-baseweb="tag"] {{ background: var(--gold-tint) !important; color: var(--navy) !important; }}
+
+/* Alertas (info / warning / error) */
+[data-testid="stAlert"] {{ background: var(--surface-2) !important; color: var(--ink) !important; }}
+
+/* Interruptor (toggle) apagado */
+[data-testid="stToggle"] {{ color: var(--ink) !important; }}
+
 /* ============ Botones — tamaño cómodo para dedo (min 44px) ============ */
 [data-testid="stBaseButton-primary"] {{
     background-color: var(--navy) !important; border: 1px solid var(--navy) !important;
@@ -231,8 +273,8 @@ a[href*="github.com"][class*="viewerBadge"] {{
 }}
 #tapa-badge-cloud {{
     position: fixed;
-    bottom: 0; right: 0;
-    width: 220px; height: 60px;
+    top: 0; right: 0;
+    width: 260px; height: 56px;
     background: var(--bg);
     z-index: 999999;
 }}
